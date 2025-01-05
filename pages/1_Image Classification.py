@@ -6,6 +6,8 @@ import time
 import zipfile
 import io
 from PIL import Image
+import tensorflow as tf
+from tensorflow import keras
 from utils.model_utils import train_model, predict_image, plot_training
 from utils.webcam_utils import capture_frames
 
@@ -24,6 +26,7 @@ if 'show_advanced' not in st.session_state:
 DATA_DIR = "data/"
 MODEL_DIR = "models/"
 os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
 # Custom CSS
 st.markdown("""
@@ -453,53 +456,58 @@ with col3:
         test_method = st.radio("Test Method:", ["Webcam", "Upload"], horizontal=True)
         
         if test_method == "Webcam":
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                st.error("Could not access webcam")
-            else:
-                # Create placeholders
-                frame_placeholder = st.empty()
-                prediction_placeholder = st.empty()
-                confidence_placeholder = st.empty()
-                
-                # Create stop button
-                stop_btn = st.button("⏹️ Stop Prediction")
-                
-                try:
-                    while not stop_btn:
-                        ret, frame = cap.read()
-                        if not ret:
-                            st.error("Failed to capture frame")
-                            break
-                        
-                        # Convert frame from BGR to RGB
-                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                        
-                        # Display the frame
-                        frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
-                        
-                        # Make prediction
-                        # Convert frame to PIL Image
-                        pil_image = Image.fromarray(frame_rgb)
-                        prediction, confidence = predict_image(pil_image)
-                        
-                        if prediction and confidence > 0.7:
-                            prediction_placeholder.success(f"Prediction: {prediction}")
-                            confidence_placeholder.info(f"Confidence: {confidence:.2%}")
-                        else:
-                            prediction_placeholder.warning("No confident prediction")
-                            if prediction:
+            try:
+                cap = cv2.VideoCapture(0)
+                if not cap.isOpened():
+                    st.error("⚠️ Could not access webcam. Please make sure to allow camera access in your browser.")
+                    st.info("If you're using a mobile device, try using the Upload option instead.")
+                else:
+                    # Create placeholders
+                    frame_placeholder = st.empty()
+                    prediction_placeholder = st.empty()
+                    confidence_placeholder = st.empty()
+                    
+                    # Create stop button
+                    stop_btn = st.button("⏹️ Stop Prediction")
+                    
+                    try:
+                        while not stop_btn:
+                            ret, frame = cap.read()
+                            if not ret:
+                                st.error("Failed to capture frame from webcam")
+                                break
+                            
+                            # Convert frame from BGR to RGB
+                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            
+                            # Display the frame
+                            frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
+                            
+                            # Make prediction
+                            pil_image = Image.fromarray(frame_rgb)
+                            prediction, confidence = predict_image(pil_image)
+                            
+                            if prediction and confidence > 0.7:
+                                prediction_placeholder.success(f"Prediction: {prediction}")
                                 confidence_placeholder.info(f"Confidence: {confidence:.2%}")
-                        
-                        # Add a small delay
-                        time.sleep(0.1)
-                
-                finally:
-                    cap.release()
-                    # Clear placeholders
-                    frame_placeholder.empty()
-                    prediction_placeholder.empty()
-                    confidence_placeholder.empty()
+                            else:
+                                prediction_placeholder.warning("No confident prediction")
+                                if prediction:
+                                    confidence_placeholder.info(f"Confidence: {confidence:.2%}")
+                            
+                            # Add a small delay
+                            time.sleep(0.1)
+                    
+                    finally:
+                        cap.release()
+                        # Clear placeholders
+                        frame_placeholder.empty()
+                        prediction_placeholder.empty()
+                        confidence_placeholder.empty()
+            
+            except Exception as e:
+                st.error(f"⚠️ Webcam error: {str(e)}")
+                st.info("Please try using the Upload option instead.")
         
         else:
             uploaded_file = st.file_uploader("Upload Image", type=["jpg", "jpeg", "png"])
@@ -531,54 +539,62 @@ with col3:
 
 def capture_frames(class_path):
     """Capture frames from webcam with mobile support"""
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        st.error("Could not access webcam")
-        return []
-    
-    captured_images = []
-    
-    # Create columns for capture and switch camera buttons
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        capture_btn = st.button("📸 Capture", use_container_width=True)
-    with col2:
-        stop_btn = st.button("⏹️ Stop", use_container_width=True)
-    
-    # Create a placeholder for the webcam feed
-    frame_placeholder = st.empty()
-    
     try:
-        while not stop_btn:
-            ret, frame = cap.read()
-            if not ret:
-                st.error("Failed to capture frame")
-                break
-            
-            # Convert frame from BGR to RGB
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
-            
-            if capture_btn:
-                # Create a unique filename
-                timestamp = int(time.time() * 1000)
-                filename = f"capture_{timestamp}.jpg"
-                filepath = os.path.join(class_path, filename)
+        cap = cv2.VideoCapture(0)
+        if not cap.isOpened():
+            st.error("⚠️ Could not access webcam. Please make sure to allow camera access in your browser.")
+            st.info("If you're using a mobile device, try using the Upload option instead.")
+            return []
+        
+        captured_images = []
+        
+        # Create columns for capture and stop buttons
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            capture_btn = st.button("📸 Capture", use_container_width=True)
+        with col2:
+            stop_btn = st.button("⏹️ Stop", use_container_width=True)
+        
+        # Create a placeholder for the webcam feed
+        frame_placeholder = st.empty()
+        
+        try:
+            while not stop_btn:
+                ret, frame = cap.read()
+                if not ret:
+                    st.error("Failed to capture frame from webcam")
+                    break
                 
-                # Save the captured frame
-                cv2.imwrite(filepath, frame)
-                captured_images.append(filepath)
-                st.success(f"Image captured successfully!")
-                break
-            
-            # Add a small delay
-            time.sleep(0.1)
+                # Convert frame from BGR to RGB
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
+                
+                if capture_btn:
+                    # Create a unique filename
+                    timestamp = int(time.time() * 1000)
+                    filename = f"capture_{timestamp}.jpg"
+                    filepath = os.path.join(class_path, filename)
+                    
+                    # Save the captured frame
+                    cv2.imwrite(filepath, frame)
+                    captured_images.append(filepath)
+                    st.success(f"Image captured successfully!")
+                    break
+                
+                # Add a small delay
+                time.sleep(0.1)
+        
+        finally:
+            cap.release()
+            frame_placeholder.empty()
+        
+        return captured_images
     
-    finally:
-        cap.release()
-    
-    return captured_images
+    except Exception as e:
+        st.error(f"⚠️ Webcam error: {str(e)}")
+        st.info("Please try using the Upload option instead.")
+        return []
 
 
 
