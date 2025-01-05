@@ -1,12 +1,11 @@
 import streamlit as st
-import torch
 import numpy as np
 from PIL import Image
 import cv2
 import io
+import torch
 import torchvision.transforms as transforms
 from torchvision.models.segmentation import deeplabv3_resnet101
-import colorsys
 
 # Set page configuration
 st.set_page_config(
@@ -16,30 +15,32 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
-# Custom CSS
-st.markdown("""
-<style>
-    .main-container {
-        max-width: 1200px;
-        margin: 0 auto;
-        padding: 2rem;
-    }
-    .result-card {
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .stButton > button {
-        width: 100%;
-    }
-</style>
-""", unsafe_allow_html=True)
+# Define Cityscapes color map
+CITYSCAPES_COLORMAP = {
+    0: (128, 64, 128),    # road
+    1: (244, 35, 232),    # sidewalk
+    2: (70, 70, 70),      # building
+    3: (102, 102, 156),   # wall
+    4: (190, 153, 153),   # fence
+    5: (153, 153, 153),   # pole
+    6: (250, 170, 30),    # traffic light
+    7: (220, 220, 0),     # traffic sign
+    8: (107, 142, 35),    # vegetation
+    9: (152, 251, 152),   # terrain
+    10: (70, 130, 180),   # sky
+    11: (220, 20, 60),    # person
+    12: (255, 0, 0),      # rider
+    13: (0, 0, 142),      # car
+    14: (0, 0, 70),       # truck
+    15: (0, 60, 100),     # bus
+    16: (0, 80, 100),     # train
+    17: (0, 0, 230),      # motorcycle
+    18: (119, 11, 32),    # bicycle
+}
 
 @st.cache_resource
 def load_model():
-    """Load DeepLabV3+ model"""
+    """Load DeepLabV3+ model pretrained on Cityscapes"""
     model = deeplabv3_resnet101(pretrained=True)
     model.eval()
     return model
@@ -52,123 +53,37 @@ def preprocess_image(image):
     ])
     return transform(image).unsqueeze(0)
 
-def generate_distinct_colors(n):
-    """Generate n visually distinct colors using improved color space sampling"""
-    colors = []
-    
-    # Base hues for common objects (road, sky, vegetation, buildings, etc.)
-    base_hues = [
-        0.6,   # Blue for sky
-        0.3,   # Green for vegetation
-        0.15,  # Orange/Brown for buildings
-        0.0,   # Red for vehicles
-        0.7,   # Purple for infrastructure
-        0.45,  # Teal for water
-    ]
-    
-    # Add base colors first
-    for hue in base_hues[:min(n, len(base_hues))]:
-        rgb = colorsys.hsv_to_rgb(hue, 0.9, 0.9)
-        colors.append(np.array(rgb) * 255)
-    
-    # Generate additional colors if needed
-    if n > len(base_hues):
-        remaining = n - len(base_hues)
-        for i in range(remaining):
-            # Use golden ratio to space out hues evenly
-            hue = (i * 0.618033988749895) % 1
-            # Vary saturation and value slightly for more distinction
-            saturation = 0.7 + (i % 3) * 0.1
-            value = 0.8 + (i % 2) * 0.1
-            rgb = colorsys.hsv_to_rgb(hue, saturation, value)
-            colors.append(np.array(rgb) * 255)
-    
-    return colors
-
-def detect_edges(image):
-    """Advanced edge detection"""
-    # Convert to grayscale
-    gray = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-    
-    # Apply Gaussian blur
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # Apply Canny edge detection
-    edges = cv2.Canny(blurred, 50, 150)
-    
-    # Dilate edges for better visibility
-    kernel = np.ones((3,3), np.uint8)
-    dilated = cv2.dilate(edges, kernel, iterations=1)
-    
-    return dilated
-
-def process_image(image, model):
-    """Process image through DeepLabV3+ model"""
-    # Preprocess image
-    input_tensor = preprocess_image(image)
-    
-    with torch.no_grad():
-        output = model(input_tensor)['out'][0]
-    
-    # Get predictions
-    predictions = output.argmax(0).cpu().numpy()
-    
-    return predictions
-
-def create_colored_mask(predictions, edges):
-    """Create colored segmentation mask with improved color assignment"""
-    # Count actual number of classes in the predictions
-    unique_classes = np.unique(predictions)
-    num_classes = len(unique_classes)
-    
-    # Generate colors with improved distinction
-    colors = generate_distinct_colors(num_classes)
+def create_colored_mask(predictions):
+    """Create colored segmentation mask using Cityscapes colors"""
+    # Get class predictions
+    pred_mask = predictions.argmax(0).cpu().numpy()
     
     # Create colored mask
-    colored_mask = np.zeros((predictions.shape[0], predictions.shape[1], 3), dtype=np.uint8)
+    colored_mask = np.zeros((pred_mask.shape[0], pred_mask.shape[1], 3), dtype=np.uint8)
     
-    # Create a mapping of class indices to ensure consistent coloring
-    class_to_color_idx = {class_idx: i for i, class_idx in enumerate(unique_classes)}
-    
-    # Fill regions with colors
-    for class_idx in unique_classes:
-        mask = predictions == class_idx
-        color_idx = class_to_color_idx[class_idx]
-        colored_mask[mask] = colors[color_idx]
-    
-    # Apply edge-aware smoothing with reduced intensity
-    colored_mask = cv2.bilateralFilter(colored_mask, 7, 50, 50)
+    # Apply colors for each class
+    for class_idx, color in CITYSCAPES_COLORMAP.items():
+        colored_mask[pred_mask == class_idx] = color
     
     return colored_mask
 
 def apply_post_processing(colored_mask):
-    """Apply advanced post-processing for enhanced segmentation visualization"""
-    # Initial bilateral filter with reduced intensity
-    smoothed = cv2.bilateralFilter(colored_mask, 7, 75, 75)
+    """Apply post-processing for enhanced visualization"""
+    # Apply edge-aware smoothing
+    processed = cv2.bilateralFilter(colored_mask, 9, 75, 75)
     
-    # Enhance contrast and color saturation
-    lab = cv2.cvtColor(smoothed, cv2.COLOR_RGB2LAB)
+    # Enhance contrast
+    lab = cv2.cvtColor(processed, cv2.COLOR_RGB2LAB)
     l, a, b = cv2.split(lab)
-    
-    # Enhance lightness channel with reduced clipping
-    clahe = cv2.createCLAHE(clipLimit=1.5, tileGridSize=(8,8))
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     l = clahe.apply(l)
-    
-    # Enhance color channels with increased saturation
-    a = cv2.multiply(a, 1.3)  # Increased color saturation
-    b = cv2.multiply(b, 1.3)  # Increased color saturation
-    
-    # Merge channels
     enhanced = cv2.merge((l,a,b))
     enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2RGB)
     
-    # Final light smoothing
-    final = cv2.bilateralFilter(enhanced, 5, 40, 40)
-    
-    return final
+    return enhanced
 
 def main():
-    st.title("🎯 Advanced Semantic Segmentation")
+    st.title("🎯 Image Segmentation")
     st.markdown("Segment objects in images with high precision")
     
     # Load model
@@ -193,14 +108,15 @@ def main():
             with col2:
                 st.markdown("### Segmentation Result")
                 with st.spinner("Processing..."):
-                    # Detect edges
-                    edges = detect_edges(image)
+                    # Preprocess image
+                    input_tensor = preprocess_image(image)
                     
-                    # Process image through model
-                    predictions = process_image(image, model)
+                    # Get predictions
+                    with torch.no_grad():
+                        output = model(input_tensor)['out'][0]
                     
-                    # Create colored mask with edge preservation
-                    colored_mask = create_colored_mask(predictions, edges)
+                    # Create colored mask
+                    colored_mask = create_colored_mask(output)
                     
                     # Apply post-processing
                     enhanced_mask = apply_post_processing(colored_mask)
@@ -229,11 +145,18 @@ def main():
             # Convert PIL Image to numpy array
             original_array = np.array(image)
             
+            # Resize enhanced_mask to match original image size
+            enhanced_mask_resized = cv2.resize(
+                enhanced_mask, 
+                (original_array.shape[1], original_array.shape[0]), 
+                interpolation=cv2.INTER_AREA
+            )
+            
             # Blend images
             blended = cv2.addWeighted(
                 original_array, 
                 1 - alpha,
-                enhanced_mask, 
+                enhanced_mask_resized, 
                 alpha, 
                 0
             )
