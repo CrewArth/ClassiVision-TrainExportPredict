@@ -16,7 +16,7 @@ def capture_frames(class_path, interval=2, max_frames=30):
     # Create directory if it doesn't exist
     os.makedirs(class_path, exist_ok=True)
     
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(1)
     if not cap.isOpened():
         st.error("Could not access webcam")
         return []
