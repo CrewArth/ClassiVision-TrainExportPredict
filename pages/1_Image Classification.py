@@ -481,7 +481,7 @@ with col3:
                             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                             
                             # Display the frame
-                            frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
+                            frame_placeholder.image(frame_rgb, channels="RGB", use_container_width =True)
                             
                             # Make prediction
                             pil_image = Image.fromarray(frame_rgb)
@@ -523,7 +523,7 @@ with col3:
                     preview_width = 300  # Fixed width for preview
                     preview_height = int(preview_width * aspect_ratio)
                     image_resized = image.resize((preview_width, preview_height), Image.Resampling.LANCZOS)
-                    st.image(image_resized, caption="Uploaded Image", use_column_width=True)
+                    st.image(image_resized, caption="Uploaded Image", use_container_width =True)
                 
                 with col_prediction:
                     # Make prediction
@@ -568,7 +568,7 @@ def capture_frames(class_path):
                 
                 # Convert frame from BGR to RGB
                 frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame_placeholder.image(frame_rgb, channels="RGB", use_column_width=True)
+                frame_placeholder.image(frame_rgb, channels="RGB", use_container_width =True)
                 
                 if capture_btn:
                     # Create a unique filename
