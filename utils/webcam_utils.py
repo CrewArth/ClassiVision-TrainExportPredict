@@ -4,6 +4,20 @@ import os
 import streamlit as st
 from PIL import Image
 
+def try_capture_device(index, backend=None):
+    """Helper function to try different capture methods"""
+    try:
+        if backend:
+            cap = cv2.VideoCapture(index, backend)
+        else:
+            cap = cv2.VideoCapture(index)
+        if cap.isOpened():
+            return cap
+        cap.release()
+    except Exception:
+        pass
+    return None
+
 def capture_frames(class_path, interval=2, max_frames=30):
     """
     Captures frames from webcam at specified intervals
@@ -16,21 +30,34 @@ def capture_frames(class_path, interval=2, max_frames=30):
     # Create directory if it doesn't exist
     os.makedirs(class_path, exist_ok=True)
     
-    # Try different camera indices
-    camera_index = 0
-    cap = cv2.VideoCapture(camera_index)
+    # Try different camera configurations
+    cap = None
+    backends = [
+        (0, cv2.CAP_DSHOW),  # Try Windows DirectShow first
+        (0, cv2.CAP_MSMF),   # Try Windows Media Foundation
+        (0, None),           # Try default backend
+        (1, cv2.CAP_DSHOW),  # Try second camera with DirectShow
+        (1, None),           # Try second camera with default backend
+    ]
     
-    # If first camera doesn't work, try the next one
-    if not cap.isOpened():
-        camera_index = 1
-        cap = cv2.VideoCapture(camera_index)
-        
-    # If still not working, try system default
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # For Windows
+    for index, backend in backends:
+        cap = try_capture_device(index, backend)
+        if cap is not None:
+            break
     
-    if not cap.isOpened():
-        st.error("Could not access webcam. Please make sure your webcam is connected and not being used by another application.")
+    if cap is None or not cap.isOpened():
+        st.error("""Could not access webcam. Please try the following:
+1. Make sure your webcam is connected
+2. Close other applications that might be using the webcam
+3. Try unplugging and plugging back in your webcam
+4. Check if your webcam works in Camera app or other applications""")
+        return []
+    
+    # Test if we can actually read from the camera
+    ret, test_frame = cap.read()
+    if not ret:
+        cap.release()
+        st.error("Connected to webcam but couldn't read video stream. Please check your webcam drivers.")
         return []
     
     captured_frames = []
