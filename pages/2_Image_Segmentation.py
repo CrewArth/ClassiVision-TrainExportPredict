@@ -103,7 +103,7 @@ def main():
             
             with col1:
                 st.markdown("### Original Image")
-                st.image(image, use_column_width=True)
+                st.image(image, use_container_width =True)
             
             with col2:
                 st.markdown("### Segmentation Result")
@@ -122,7 +122,7 @@ def main():
                     enhanced_mask = apply_post_processing(colored_mask)
                     
                     # Display result
-                    st.image(enhanced_mask, use_column_width=True)
+                    st.image(enhanced_mask, use_container_width =True)
                     
                     # Add download button
                     buf = io.BytesIO()
@@ -169,7 +169,7 @@ def main():
             blended_resized = cv2.resize(blended, (new_width, new_height), interpolation=cv2.INTER_AREA)
             
             # Display resized blended result
-            st.image(blended_resized, use_column_width=False)
+            st.image(blended_resized, use_container_width =False)
             
             # Add download button for blended result
             buf = io.BytesIO()
