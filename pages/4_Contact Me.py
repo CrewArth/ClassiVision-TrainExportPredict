@@ -5,7 +5,12 @@ import time
 import requests
 import re
 
-WEBHOOK_URL = st.secrets["WEBHOOK_URL"]
+# Try to get webhook URL from secrets, use None if not configured
+try:
+    WEBHOOK_URL = st.secrets["WEBHOOK_URL"]
+except:
+    WEBHOOK_URL = None
+
 # Function to load Lottie from local JSON
 def load_lottiefile(filepath: str):
     with open(filepath, "r") as f:
@@ -17,14 +22,17 @@ def is_valid_email(email):
     return re.match(pattern, email)
 
 # Load Lottie Animation from local file
-lottie_contact = load_lottiefile("handshake.json")  # Save handshake.json in the project folder
+try:
+    lottie_contact = load_lottiefile("handshake.json")
+except:
+    st.warning("Animation file not found. Contact form will display without animation.")
+    lottie_contact = None
 
 # Page Configuration
 st.set_page_config(page_title="Contact Me", page_icon="📞", layout="centered")
 
 with st.spinner('Page is Loading...'):
     time.sleep(1)
-
 
 # Page Heading
 st.markdown(
@@ -43,8 +51,9 @@ with st.container():
     col1, col2 = st.columns([1, 1])
 
     with col1:
-        # Display Animation
-        st_lottie(lottie_contact, height=250, key="contact")
+        # Display Animation only if available
+        if lottie_contact:
+            st_lottie(lottie_contact, height=250, key="contact")
 
     with col2:
         # Contact Info
@@ -63,57 +72,58 @@ with st.container():
             unsafe_allow_html=True,
         )
 
-# Contact Form
-st.markdown("---")
-st.markdown(
-    """
-    <h2 style="text-align: center; color: white;">Get in Touch</h2>
-    <p style="text-align: center; color: white;">
-        Leave your email and message below, and I'll get back to you soon!
-    </p>
-    """,
-    unsafe_allow_html=True,
-)
+if not WEBHOOK_URL:
+    st.warning("⚠️ Contact form is currently disabled. Please use the social links above to reach out.")
+else:
+    # Contact Form
+    st.markdown("---")
+    st.markdown(
+        """
+        <h2 style="text-align: center; color: white;">Get in Touch</h2>
+        <p style="text-align: center; color: white;">
+            Leave your email and message below, and I'll get back to you soon!
+        </p>
+        """,
+        unsafe_allow_html=True,
+    )
 
-# Contact Form Fields
-with st.form(key="contact_form"):
-    name = st.text_input("Your Name", placeholder="Enter your Name")
-    email = st.text_input("Your Email", placeholder="Enter your email address")
-    message = st.text_area("Your Message", placeholder="Write your message here...")
-    submitted = st.form_submit_button("Submit")
+    # Contact Form Fields
+    with st.form(key="contact_form"):
+        name = st.text_input("Your Name", placeholder="Enter your Name")
+        email = st.text_input("Your Email", placeholder="Enter your email address")
+        message = st.text_area("Your Message", placeholder="Write your message here...")
+        submitted = st.form_submit_button("Submit")
 
-    # Form Submission Response
-    if submitted:
-        if not WEBHOOK_URL:
-            st.error("Email Service is unavailable currently. Try again later.")
-            st.stop()
-
-        if not name:
-            st.error("Please Enter your Name")
-            st.stop()
-
-        # Validate button
-        if email:
-            if is_valid_email(email):
-                pass
-            else:
-                st.error("❌ Invalid Email Address. Please enter a correct email format.")
+        # Form Submission Response
+        if submitted:
+            if not name:
+                st.error("Please Enter your Name")
                 st.stop()
-        else:
-            st.warning("⚠️ Please enter an email address.")
-            st.stop()
 
-        if not message:
-            st.error("Message cannot be blank. Enter your message.")
-            st.stop()
+            # Validate button
+            if email:
+                if is_valid_email(email):
+                    pass
+                else:
+                    st.error("❌ Invalid Email Address. Please enter a correct email format.")
+                    st.stop()
+            else:
+                st.warning("⚠️ Please enter an email address.")
+                st.stop()
 
-        data = {"email": email, "name": name, "message": message}
-        response = requests.post(WEBHOOK_URL, json=data)
+            if not message:
+                st.error("Message cannot be blank. Enter your message.")
+                st.stop()
 
-        if response.status_code == 200:
-            st.success("Your message was sent sucessfully!")
-        else:
-            st.success("Your message was sent sucessfully!")
+            try:
+                data = {"email": email, "name": name, "message": message}
+                response = requests.post(WEBHOOK_URL, json=data)
+                if response.status_code == 200:
+                    st.success("Your message was sent successfully!")
+                else:
+                    st.error("Failed to send message. Please try again later or use the social links above.")
+            except:
+                st.error("Failed to send message. Please try again later or use the social links above.")
 
 if st.button("Back to Homepage"):
     st.switch_page("Home.py")
