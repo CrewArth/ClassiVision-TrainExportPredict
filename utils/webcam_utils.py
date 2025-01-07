@@ -16,9 +16,21 @@ def capture_frames(class_path, interval=2, max_frames=30):
     # Create directory if it doesn't exist
     os.makedirs(class_path, exist_ok=True)
     
-    cap = cv2.VideoCapture(0)
+    # Try different camera indices
+    camera_index = 0
+    cap = cv2.VideoCapture(camera_index)
+    
+    # If first camera doesn't work, try the next one
     if not cap.isOpened():
-        st.error("Could not access webcam")
+        camera_index = 1
+        cap = cv2.VideoCapture(camera_index)
+        
+    # If still not working, try system default
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # For Windows
+    
+    if not cap.isOpened():
+        st.error("Could not access webcam. Please make sure your webcam is connected and not being used by another application.")
         return []
     
     captured_frames = []
